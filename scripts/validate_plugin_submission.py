@@ -189,7 +189,13 @@ def validate_submission(
                         field="package_root",
                     ) from exc
                 raise
-            if package_root_meta.get("type") != "dir":
+            package_root_is_dir = False
+            if isinstance(package_root_meta, list):
+                # GitHub contents API 在读取目录时直接返回子项数组，不是单个对象。
+                package_root_is_dir = True
+            elif isinstance(package_root_meta, dict):
+                package_root_is_dir = package_root_meta.get("type") == "dir"
+            if not package_root_is_dir:
                 raise ValidationError(
                     "插件包根目录不存在或不是目录。",
                     error_code="install_target_invalid",
