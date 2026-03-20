@@ -1,0 +1,36 @@
+{
+  "plugin_id": "official-weather",
+  "name": "官方天气插件",
+  "summary": "官方天气插件，提供家庭天气同步、天气设备实体与天气卡片能力。",
+  "source_repo": "https://github.com/jingyi0605/famiily_official_weather",
+  "manifest_path": "official_weather/manifest.json",
+  "readme_url": "https://github.com/jingyi0605/famiily_official_weather/blob/main/README.md",
+  "publisher": {
+    "name": "jingyi0605",
+    "url": "https://github.com/jingyi0605"
+  },
+  "categories": [],
+  "risk_level": "low",
+  "permissions": [
+    "device.read",
+    "region.read"
+  ],
+  "latest_version": "0.1.0",
+  "versions": [
+    {
+      "version": "0.1.0",
+      "git_ref": "main",
+      "artifact_type": "source_archive"
+    }
+  ],
+  "install": {
+    "package_root": "official_weather",
+    "requirements_path": "requirements.txt",
+    "readme_path": "README.md"
+  },
+  "maintainers": [
+    {
+      "name": "jingyi0605"
+    }
+  ]
+}
