@@ -1,0 +1,98 @@
+name: 已收录插件版本同步
+
+on:
+  schedule:
+    - cron: "0 */2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: marketplace-version-sync
+  cancel-in-progress: true
+
+jobs:
+  sync-marketplace-versions:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 确保自动化标签存在
+        uses: actions/github-script@v8
+        with:
+          script: |
+            await github.rest.issues.createLabel({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              name: "auto-generated",
+              color: "5319e7",
+              description: "机器人自动生成内容",
+            }).catch(async (error) => {
+              if (error.status !== 422) {
+                throw error;
+              }
+              await github.rest.issues.updateLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                name: "auto-generated",
+                new_name: "auto-generated",
+                color: "5319e7",
+                description: "机器人自动生成内容",
+              });
+            });
+
+      - name: 检出仓库
+        uses: actions/checkout@v5
+
+      - name: 安装 Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: 准备临时目录
+        run: mkdir -p .automation
+
+      - name: 扫描已收录插件版本
+        id: scan
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python scripts/sync_marketplace_versions.py \
+            --repository-root "$GITHUB_WORKSPACE" \
+            --output ".automation/version-sync.json"
+
+      - name: 创建或更新版本同步 PR
+        if: steps.scan.outputs.status == 'updated'
+        uses: peter-evans/create-pull-request@v8
+        with:
+          token: ${{ github.token }}
+          branch: ${{ steps.scan.outputs.branch_name }}
+          delete-branch: false
+          commit-message: ${{ steps.scan.outputs.commit_message }}
+          title: ${{ steps.scan.outputs.pr_title }}
+          body: |
+            ## 自动生成说明
+
+            这个 PR 由“已收录插件版本同步”定时任务自动生成。
+
+            - 触发方式：每 2 小时检查一次已收录插件源码仓库
+            - 更新策略：只追加新版本或把同版本 branch 记录收口为 tag 记录
+            - 安全边界：不会因为上游删除 tag 就自动删除市场里已有版本
+
+            ## 本轮更新
+
+            ${{ steps.scan.outputs.pr_body_fragment }}
+          add-paths: |
+            ${{ steps.scan.outputs.changed_paths }}
+          labels: |
+            auto-generated
+          reviewers: |
+            jingyi0605
+
+      - name: 回写工作流摘要
+        if: always()
+        run: |
+          cat <<'EOF' >> "$GITHUB_STEP_SUMMARY"
+          ${{ steps.scan.outputs.report_markdown }}
+          EOF

@@ -65,7 +65,10 @@ def write_github_output(path: str | None, pairs: dict[str, str]) -> None:
         return
     with open(path, "a", encoding="utf-8") as stream:
         for key, value in pairs.items():
-            stream.write(f"{key}={value}\n")
+            if "\n" in value:
+                stream.write(f"{key}<<__FC_OUTPUT__\n{value}\n__FC_OUTPUT__\n")
+            else:
+                stream.write(f"{key}={value}\n")
 
 
 def load_json_file(path: str) -> Any:
@@ -252,6 +255,40 @@ def fetch_repo_releases(owner: str, repo: str, *, token: str | None = None) -> l
 def fetch_repo_tags(owner: str, repo: str, *, token: str | None = None) -> list[dict[str, Any]]:
     payload = request_json(f"https://api.github.com/repos/{owner}/{repo}/tags?per_page=20", token=token)
     return payload if isinstance(payload, list) else []
+
+
+def collect_version_tag_names(
+    *,
+    releases: list[dict[str, Any]],
+    tags: list[dict[str, Any]],
+) -> tuple[list[str], dict[str, str | None]]:
+    ordered_tag_names: list[str] = []
+    release_published_at_by_tag: dict[str, str | None] = {}
+    seen: set[str] = set()
+
+    def add_tag(tag_name: str | None, *, published_at: str | None = None) -> None:
+        normalized_tag_name = normalize_text(tag_name)
+        if not normalized_tag_name:
+            return
+        if published_at and normalized_tag_name not in release_published_at_by_tag:
+            release_published_at_by_tag[normalized_tag_name] = published_at
+        if normalized_tag_name in seen:
+            return
+        seen.add(normalized_tag_name)
+        ordered_tag_names.append(normalized_tag_name)
+
+    for release in releases:
+        if release.get("draft") or release.get("prerelease"):
+            continue
+        add_tag(
+            str(release.get("tag_name") or ""),
+            published_at=normalize_text(str(release.get("published_at") or release.get("created_at") or "")) or None,
+        )
+
+    for tag in tags:
+        add_tag(str(tag.get("name") or ""))
+
+    return ordered_tag_names, release_published_at_by_tag
 
 
 def fetch_repo_content_metadata(

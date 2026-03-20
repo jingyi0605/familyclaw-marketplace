@@ -15,12 +15,13 @@
     "device.read",
     "region.read"
   ],
-  "latest_version": "0.1.0",
+  "latest_version": "0.1.1",
   "versions": [
     {
-      "version": "0.1.0",
-      "git_ref": "main",
+      "version": "0.1.1",
+      "git_ref": "refs/tags/v0.1.1",
       "artifact_type": "source_archive",
+      "artifact_url": "https://github.com/jingyi0605/famiily_official_weather/archive/refs/tags/v0.1.1.zip",
       "min_app_version": "0.1.0"
     }
   ],
