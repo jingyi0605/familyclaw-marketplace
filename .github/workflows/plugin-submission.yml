@@ -1,0 +1,282 @@
+name: 插件收录自动化
+
+on:
+  issues:
+    types:
+      - opened
+      - edited
+      - reopened
+      - labeled
+  issue_comment:
+    types:
+      - created
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: plugin-submission-${{ github.event.issue.number }}
+  cancel-in-progress: true
+
+jobs:
+  plugin-submission:
+    if: >-
+      (github.event_name == 'issues' && contains(join(github.event.issue.labels.*.name, ','), 'plugin-submission'))
+      || (github.event_name == 'issue_comment'
+          && !github.event.issue.pull_request
+          && contains(join(github.event.issue.labels.*.name, ','), 'plugin-submission')
+          && startsWith(github.event.comment.body, '/rerun-submission'))
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 确保基础标签存在
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const labels = [
+              { name: "plugin-submission", color: "0e8a16", description: "插件市场收录申请" },
+              { name: "auto-generated", color: "5319e7", description: "机器人自动生成内容" },
+              { name: "status:submitted", color: "d4c5f9", description: "已提交收录申请" },
+              { name: "status:validating", color: "fbca04", description: "自动校验中" },
+              { name: "status:needs-author-fix", color: "d93f0b", description: "等待作者补充信息" },
+              { name: "status:pr-opened", color: "0e8a16", description: "已生成待审核 PR" },
+              { name: "status:awaiting-review", color: "1d76db", description: "等待维护者审核" },
+              { name: "status:changes-requested", color: "b60205", description: "审核要求修改" },
+              { name: "status:approved", color: "0e8a16", description: "审核已通过" },
+              { name: "status:merged", color: "6f42c1", description: "已合并进市场默认分支" },
+              { name: "status:closed", color: "6a737d", description: "流程已关闭未合并" },
+              { name: "status:system-error", color: "b60205", description: "自动化系统异常" },
+              { name: "status:rejected", color: "6a737d", description: "维护者拒绝收录" },
+            ];
+
+            for (const label of labels) {
+              await github.rest.issues.createLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                name: label.name,
+                color: label.color,
+                description: label.description,
+              }).catch(async (error) => {
+                if (error.status !== 422) {
+                  throw error;
+                }
+                await github.rest.issues.updateLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name: label.name,
+                  new_name: label.name,
+                  color: label.color,
+                  description: label.description,
+                });
+              });
+            }
+
+      - name: 检出仓库
+        uses: actions/checkout@v5
+
+      - name: 安装 Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: 准备临时目录
+        run: mkdir -p .automation
+
+      - name: 标记 Issue 为校验中
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const issueNumber = context.issue.number;
+            const statusLabels = [
+              "status:submitted",
+              "status:validating",
+              "status:needs-author-fix",
+              "status:pr-opened",
+              "status:system-error",
+              "status:approved",
+              "status:rejected",
+            ];
+            const currentLabels = context.payload.issue.labels.map((label) => label.name);
+            const labelsToRemove = currentLabels.filter((label) => statusLabels.includes(label) && label !== "status:validating");
+            for (const label of labelsToRemove) {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                name: label,
+              }).catch(() => {});
+            }
+            if (!currentLabels.includes("status:validating")) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                labels: ["status:validating"],
+              });
+            }
+
+      - name: 运行自动校验
+        id: validate
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python scripts/validate_plugin_submission.py \
+            --event-path "$GITHUB_EVENT_PATH" \
+            --output ".automation/validation.json"
+
+      - name: 生成市场条目
+        if: steps.validate.outputs.status == 'passed'
+        id: generate
+        run: |
+          python scripts/issue_to_entry.py \
+            --validation-json ".automation/validation.json" \
+            --repository-root "$GITHUB_WORKSPACE"
+
+      - name: 创建或更新机器人 PR
+        if: steps.validate.outputs.status == 'passed'
+        id: cpr
+        uses: peter-evans/create-pull-request@v8
+        with:
+          token: ${{ github.token }}
+          commit-message: ${{ steps.generate.outputs.commit_message }}
+          title: ${{ steps.generate.outputs.pr_title }}
+          body: |
+            <!-- plugin-submission:issue=${{ steps.validate.outputs.issue_number }};plugin_id=${{ steps.generate.outputs.plugin_id }} -->
+            Closes #${{ steps.validate.outputs.issue_number }}
+
+            ## 自动生成说明
+
+            这个 PR 由插件收录自动化流程生成。
+
+            - 对应 Issue：#${{ steps.validate.outputs.issue_number }}
+            - 插件 ID：`${{ steps.generate.outputs.plugin_id }}`
+            - 生成路径：`${{ steps.generate.outputs.entry_path }}`
+
+            ## 审核时请重点检查
+
+            - 插件仓库地址和 README 是否可信
+            - 自动生成的分类、摘要、维护者信息是否需要人工微调
+            - 权限和风险声明是否与插件真实行为一致
+
+            合并后，这个条目才会进入正式市场。
+          branch: ${{ steps.generate.outputs.branch_name }}
+          delete-branch: false
+          add-paths: |
+            ${{ steps.generate.outputs.entry_path }}
+          labels: |
+            plugin-submission
+            auto-generated
+            status:awaiting-review
+          reviewers: |
+            jingyi0605
+
+      - name: 回写 Issue 结果
+        if: always()
+        uses: actions/github-script@v8
+        env:
+          VALIDATION_JSON_PATH: .automation/validation.json
+          PULL_REQUEST_URL: ${{ steps.cpr.outputs.pull-request-url }}
+          PULL_REQUEST_OPERATION: ${{ steps.cpr.outputs.pull-request-operation }}
+          GENERATED_BRANCH: ${{ steps.generate.outputs.branch_name }}
+        with:
+          script: |
+            const fs = require("fs");
+            const validation = fs.existsSync(process.env.VALIDATION_JSON_PATH)
+              ? JSON.parse(fs.readFileSync(process.env.VALIDATION_JSON_PATH, "utf8"))
+              : {
+                  status: "system_error",
+                  report_markdown: "## 自动校验遇到系统异常\n\n- workflow 没有产出 `validation.json`，请检查脚本执行日志。",
+                };
+            const issueNumber = context.issue.number;
+            const marker = "<!-- plugin-submission-report -->";
+            const statusLabels = [
+              "status:submitted",
+              "status:validating",
+              "status:needs-author-fix",
+              "status:pr-opened",
+              "status:system-error",
+            ];
+
+            let nextLabel = "status:system-error";
+            let titleLine = "状态：系统异常";
+            let extra = "";
+
+            if (validation.status === "failed") {
+              nextLabel = "status:needs-author-fix";
+              titleLine = "状态：等待作者补充";
+              extra = "请按上面的失败原因修改当前 Issue，然后评论 `/rerun-submission` 重新触发校验。";
+            } else if (validation.status === "passed") {
+              nextLabel = "status:pr-opened";
+              titleLine = "状态：已生成待审核 PR";
+              if (process.env.PULL_REQUEST_URL) {
+                extra = `机器人 PR：${process.env.PULL_REQUEST_URL}\n\nPR 操作：${process.env.PULL_REQUEST_OPERATION || "created"}`;
+              } else if (process.env.GENERATED_BRANCH) {
+                const { data: pulls } = await github.rest.pulls.list({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  state: "open",
+                  head: `${context.repo.owner}:${process.env.GENERATED_BRANCH}`,
+                });
+                if (pulls.length > 0) {
+                  extra = `机器人 PR：${pulls[0].html_url}\n\nPR 操作：existing`;
+                } else {
+                  extra = "自动生成条目成功，但当前没有发现新的差异。通常表示已有 PR 内容已经是最新的。";
+                }
+              }
+            }
+
+            const currentLabels = context.payload.issue.labels.map((label) => label.name);
+            const labelsToRemove = currentLabels.filter((label) => statusLabels.includes(label) && label !== nextLabel);
+            for (const label of labelsToRemove) {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                name: label,
+              }).catch(() => {});
+            }
+            if (!currentLabels.includes(nextLabel)) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                labels: [nextLabel],
+              }).catch(() => {});
+            }
+
+            const body = [
+              marker,
+              "## 自动校验结果",
+              "",
+              titleLine,
+              "",
+              validation.report_markdown.trim(),
+              "",
+              extra,
+            ].join("\n");
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              per_page: 100,
+            });
+            const existing = comments.find((comment) => comment.body && comment.body.includes(marker));
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                body,
+              });
+            }

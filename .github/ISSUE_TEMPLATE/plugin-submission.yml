@@ -1,0 +1,121 @@
+name: 插件收录申请
+description: 申请把一个插件收录到 FamilyClaw 官方插件市场
+title: "[插件收录]："
+labels:
+  - plugin-submission
+  - status:submitted
+body:
+  - type: markdown
+    attributes:
+      value: |
+        请按表单填写插件信息。这里不是让你手写完整 `entry.json`，机器人会自动读取插件仓库并生成市场条目草案。
+
+  - type: input
+    id: plugin_repo_url
+    attributes:
+      label: 插件源码仓库地址
+      description: 必须是公开可访问的 GitHub 仓库地址。
+      placeholder: https://github.com/example/weather-forecast-plugin
+    validations:
+      required: true
+
+  - type: input
+    id: plugin_repo_branch
+    attributes:
+      label: 仓库分支
+      description: 不填默认按 `main`。
+      placeholder: main
+      value: main
+    validations:
+      required: false
+
+  - type: input
+    id: manifest_path
+    attributes:
+      label: manifest.json 路径
+      description: 相对仓库根目录的路径。
+      placeholder: manifest.json
+      value: manifest.json
+    validations:
+      required: true
+
+  - type: input
+    id: readme_path
+    attributes:
+      label: README 路径
+      description: 相对仓库根目录的路径。
+      placeholder: README.md
+      value: README.md
+    validations:
+      required: true
+
+  - type: input
+    id: package_root
+    attributes:
+      label: 插件包根目录
+      description: 插件 Python 包的相对路径，不填默认按 `plugin`。
+      placeholder: plugin
+      value: plugin
+    validations:
+      required: true
+
+  - type: input
+    id: requirements_path
+    attributes:
+      label: requirements.txt 路径
+      description: 相对仓库根目录的路径，不填默认按 `requirements.txt`。
+      placeholder: requirements.txt
+      value: requirements.txt
+    validations:
+      required: true
+
+  - type: textarea
+    id: summary_override
+    attributes:
+      label: 市场摘要补充
+      description: 可选。用一两句话说明插件用途，别写营销废话。
+      placeholder: 根据家庭地区提供天气查询和天气提醒。
+    validations:
+      required: false
+
+  - type: textarea
+    id: category_hints
+    attributes:
+      label: 分类建议
+      description: 可选。一行一个分类。
+      placeholder: |
+        生活服务
+        天气
+    validations:
+      required: false
+
+  - type: textarea
+    id: maintainers
+    attributes:
+      label: 维护者信息
+      description: 一行一个，格式：姓名 | 链接
+      placeholder: |
+        Example Maintainer | https://github.com/example
+    validations:
+      required: true
+
+  - type: textarea
+    id: maintainer_notes
+    attributes:
+      label: 补充说明
+      description: 可选。只写对审核有帮助的信息，比如版本发布方式、外部依赖、已知限制。
+      placeholder: 当前只提供 source archive 安装方式。
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: 提交前确认
+      options:
+        - label: 我确认插件源码仓库可以被公开访问。
+          required: true
+        - label: 我确认 manifest、README、requirements 已经准备好。
+          required: true
+        - label: 我确认权限和风险声明不是乱填的。
+          required: true

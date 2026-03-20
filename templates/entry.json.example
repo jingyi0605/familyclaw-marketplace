@@ -1,0 +1,42 @@
+{
+  "plugin_id": "weather_forecast",
+  "name": "天气预报",
+  "summary": "根据家庭地区提供天气查询和天气提醒。",
+  "source_repo": "https://github.com/example/weather-forecast-plugin",
+  "manifest_path": "manifest.json",
+  "readme_url": "https://github.com/example/weather-forecast-plugin/blob/main/README.md",
+  "publisher": {
+    "name": "Example Org",
+    "url": "https://github.com/example"
+  },
+  "categories": [
+    "生活服务",
+    "天气"
+  ],
+  "risk_level": "low",
+  "permissions": [
+    "household_region_context",
+    "memory.read"
+  ],
+  "latest_version": "1.0.0",
+  "versions": [
+    {
+      "version": "1.0.0",
+      "git_ref": "v1.0.0",
+      "artifact_type": "source_archive",
+      "published_at": "2026-03-20T00:00:00Z",
+      "min_app_version": "0.1.0"
+    }
+  ],
+  "install": {
+    "package_root": "plugin",
+    "requirements_path": "requirements.txt",
+    "readme_path": "README.md"
+  },
+  "maintainers": [
+    {
+      "name": "Example Maintainer",
+      "url": "https://github.com/example"
+    }
+  ]
+}

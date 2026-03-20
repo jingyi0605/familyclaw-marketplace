@@ -1,0 +1,276 @@
+name: 插件收录审核状态同步
+
+on:
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - edited
+      - closed
+      - labeled
+      - unlabeled
+  pull_request_review:
+    types:
+      - submitted
+      - dismissed
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: plugin-submission-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  sync-review-state:
+    if: >-
+      contains(join(github.event.pull_request.labels.*.name, ','), 'plugin-submission')
+      || (github.event.pull_request.body != null
+          && contains(github.event.pull_request.body, '<!-- plugin-submission:issue='))
+      || startsWith(github.event.pull_request.head.ref, 'automation/plugin-submission/issue-')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 确保基础标签存在
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const labels = [
+              { name: "plugin-submission", color: "0e8a16", description: "插件市场收录申请" },
+              { name: "auto-generated", color: "5319e7", description: "机器人自动生成内容" },
+              { name: "status:submitted", color: "d4c5f9", description: "已提交收录申请" },
+              { name: "status:validating", color: "fbca04", description: "自动校验中" },
+              { name: "status:needs-author-fix", color: "d93f0b", description: "等待作者补充信息" },
+              { name: "status:pr-opened", color: "0e8a16", description: "已生成待审核 PR" },
+              { name: "status:awaiting-review", color: "1d76db", description: "等待维护者审核" },
+              { name: "status:changes-requested", color: "b60205", description: "审核要求修改" },
+              { name: "status:approved", color: "0e8a16", description: "审核已通过" },
+              { name: "status:merged", color: "6f42c1", description: "已合并进市场默认分支" },
+              { name: "status:closed", color: "6a737d", description: "流程已关闭未合并" },
+              { name: "status:system-error", color: "b60205", description: "自动化系统异常" },
+              { name: "status:rejected", color: "6a737d", description: "维护者拒绝收录" },
+            ];
+
+            for (const label of labels) {
+              await github.rest.issues.createLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                name: label.name,
+                color: label.color,
+                description: label.description,
+              }).catch(async (error) => {
+                if (error.status !== 422) {
+                  throw error;
+                }
+                await github.rest.issues.updateLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name: label.name,
+                  new_name: label.name,
+                  color: label.color,
+                  description: label.description,
+                });
+              });
+            }
+
+      - name: 同步 PR 与 Issue 审核状态
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const prNumber = pr.number;
+            const prBody = pr.body || "";
+            const prStatusLabels = [
+              "status:awaiting-review",
+              "status:changes-requested",
+              "status:approved",
+              "status:merged",
+              "status:closed",
+            ];
+            const issueStatusLabels = [
+              "status:submitted",
+              "status:validating",
+              "status:needs-author-fix",
+              "status:pr-opened",
+              "status:approved",
+              "status:rejected",
+              "status:system-error",
+            ];
+
+            function parseIssueNumber() {
+              const markerMatch = prBody.match(/<!--\s*plugin-submission:issue=(\d+);/i);
+              if (markerMatch) {
+                return Number(markerMatch[1]);
+              }
+              const closesMatch = prBody.match(/Closes\s+#(\d+)/i);
+              if (closesMatch) {
+                return Number(closesMatch[1]);
+              }
+              const refMatch = (pr.head.ref || "").match(/issue-(\d+)$/i);
+              if (refMatch) {
+                return Number(refMatch[1]);
+              }
+              return 0;
+            }
+
+            async function syncLabels(target, managedLabels, nextLabel) {
+              const currentLabels = target.labels.map((label) => label.name);
+              const labelsToRemove = currentLabels.filter(
+                (label) => managedLabels.includes(label) && label !== nextLabel,
+              );
+              for (const label of labelsToRemove) {
+                await github.rest.issues.removeLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: target.number,
+                  name: label,
+                }).catch(() => {});
+              }
+              if (!currentLabels.includes(nextLabel)) {
+                await github.rest.issues.addLabels({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: target.number,
+                  labels: [nextLabel],
+                }).catch(() => {});
+              }
+            }
+
+            const issueNumber = parseIssueNumber();
+            const { data: reviews } = await github.rest.pulls.listReviews({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber,
+              per_page: 100,
+            });
+            const latestReviewByUser = new Map();
+            const meaningfulReviews = [...reviews]
+              .filter((review) => ["APPROVED", "CHANGES_REQUESTED", "DISMISSED"].includes(review.state))
+              .sort((left, right) => {
+                const leftTime = new Date(left.submitted_at || left.dismissed_at || 0).getTime();
+                const rightTime = new Date(right.submitted_at || right.dismissed_at || 0).getTime();
+                return leftTime - rightTime;
+              });
+            for (const review of meaningfulReviews) {
+              const login = review.user?.login;
+              if (!login) {
+                continue;
+              }
+              latestReviewByUser.set(login, review.state);
+            }
+            const latestReviewStates = Array.from(latestReviewByUser.values());
+            const approvedReviewers = Array.from(latestReviewByUser.entries())
+              .filter(([, state]) => state === "APPROVED")
+              .map(([login]) => login);
+            const changeRequestedReviewers = Array.from(latestReviewByUser.entries())
+              .filter(([, state]) => state === "CHANGES_REQUESTED")
+              .map(([login]) => login);
+
+            let prNextLabel = "status:awaiting-review";
+            let issueNextLabel = "status:pr-opened";
+            let titleLine = "状态：等待维护者审核";
+            let detailLines = [
+              `- PR：#${prNumber}`,
+              `- 链接：${pr.html_url}`,
+            ];
+
+            if (pr.merged) {
+              prNextLabel = "status:merged";
+              issueNextLabel = "status:approved";
+              titleLine = "状态：已合并进入正式市场";
+              detailLines.push("- 结果：PR 已合并，市场条目已经进入默认分支。");
+            } else if (pr.state === "closed") {
+              prNextLabel = "status:closed";
+              issueNextLabel = "status:rejected";
+              titleLine = "状态：流程已关闭";
+              detailLines.push("- 结果：PR 已关闭且未合并，这次收录流程到此结束。");
+            } else if (changeRequestedReviewers.length > 0) {
+              prNextLabel = "status:changes-requested";
+              issueNextLabel = "status:needs-author-fix";
+              titleLine = "状态：审核要求补充或修改";
+              detailLines.push(`- 提出修改：${changeRequestedReviewers.map((login) => `@${login}`).join("、")}`);
+              detailLines.push("- 下一步：请先处理 PR 审核意见，再重新触发收录流程。");
+            } else if (approvedReviewers.length > 0) {
+              prNextLabel = "status:approved";
+              issueNextLabel = "status:approved";
+              titleLine = "状态：审核已通过";
+              detailLines.push(`- 审批人：${approvedReviewers.map((login) => `@${login}`).join("、")}`);
+              detailLines.push("- 说明：最终是否立刻合并，仍由仓库分支保护和自动合并设置决定。");
+
+              try {
+                await github.graphql(
+                  `
+                    mutation EnableAutoMerge($pullRequestId: ID!) {
+                      enablePullRequestAutoMerge(
+                        input: {
+                          pullRequestId: $pullRequestId
+                          mergeMethod: SQUASH
+                        }
+                      ) {
+                        pullRequest {
+                          number
+                        }
+                      }
+                    }
+                  `,
+                  { pullRequestId: pr.node_id },
+                );
+                detailLines.push("- 自动处理：已尝试开启 GitHub 自动合并。");
+              } catch (error) {
+                detailLines.push(`- 自动处理：未能自动开启合并，原因：${error.message}`);
+              }
+            } else if (latestReviewStates.some((state) => state === "DISMISSED")) {
+              detailLines.push("- 说明：之前的审核已被撤销，当前重新回到待审核状态。");
+            } else {
+              detailLines.push("- 结果：PR 已创建，等待维护者查看。");
+            }
+
+            await syncLabels(
+              { number: prNumber, labels: pr.labels },
+              prStatusLabels,
+              prNextLabel,
+            );
+
+            if (issueNumber > 0) {
+              const { data: issue } = await github.rest.issues.get({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+              });
+              await syncLabels(issue, issueStatusLabels, issueNextLabel);
+
+              const marker = "<!-- plugin-submission-review-state -->";
+              const body = [
+                marker,
+                "## 审核状态同步",
+                "",
+                titleLine,
+                "",
+                ...detailLines,
+              ].join("\n");
+              const { data: comments } = await github.rest.issues.listComments({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                per_page: 100,
+              });
+              const existing = comments.find((comment) => comment.body && comment.body.includes(marker));
+              if (existing) {
+                await github.rest.issues.updateComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  comment_id: existing.id,
+                  body,
+                });
+              } else {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issueNumber,
+                  body,
+                });
+              }
+            }

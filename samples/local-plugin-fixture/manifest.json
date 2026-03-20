@@ -1,0 +1,27 @@
+{
+  "id": "weather-forecast-plugin",
+  "name": "天气预报插件",
+  "version": "1.2.3",
+  "api_version": 1,
+  "types": ["integration"],
+  "permissions": ["household_region_context", "memory.read"],
+  "risk_level": "low",
+  "triggers": ["manual"],
+  "entrypoints": {
+    "integration": "plugin.integration.sync"
+  },
+  "capabilities": {
+    "integration": {
+      "domains": ["weather"],
+      "instance_model": "single_instance",
+      "refresh_mode": "polling",
+      "supports_discovery": false,
+      "supports_actions": false,
+      "supports_cards": false,
+      "entity_types": ["weather.forecast"]
+    }
+  },
+  "compatibility": {
+    "min_app_version": "0.1.0"
+  }
+}

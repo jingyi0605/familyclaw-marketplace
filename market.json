@@ -1,0 +1,9 @@
+{
+  "market_id": "familyclaw-official",
+  "name": "FamilyClaw 官方插件市场",
+  "owner": "FamilyClaw",
+  "repo_url": "https://github.com/jingyi0605/familyclaw-marketplace.git",
+  "default_branch": "main",
+  "entry_root": "plugins",
+  "trusted_level": "official"
+}

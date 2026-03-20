@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/jingyi0605/familyclaw-marketplace/schemas/entry.schema.json",
+  "title": "FamilyClaw Marketplace Entry",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "plugin_id",
+    "name",
+    "summary",
+    "source_repo",
+    "manifest_path",
+    "readme_url",
+    "publisher",
+    "risk_level",
+    "permissions",
+    "latest_version",
+    "versions",
+    "install"
+  ],
+  "properties": {
+    "plugin_id": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "name": { "type": "string", "minLength": 1, "maxLength": 100 },
+    "summary": { "type": "string", "minLength": 1, "maxLength": 500 },
+    "source_repo": { "type": "string", "minLength": 1 },
+    "manifest_path": { "type": "string", "minLength": 1 },
+    "readme_url": { "type": "string", "minLength": 1 },
+    "publisher": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "url": { "type": "string", "minLength": 1 }
+      }
+    },
+    "categories": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "risk_level": {
+      "type": "string",
+      "enum": ["low", "medium", "high"]
+    },
+    "permissions": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "latest_version": { "type": "string", "minLength": 1 },
+    "versions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["version", "git_ref", "artifact_type"],
+        "properties": {
+          "version": { "type": "string", "minLength": 1 },
+          "git_ref": { "type": "string", "minLength": 1 },
+          "artifact_type": {
+            "type": "string",
+            "enum": ["release_asset", "source_archive"]
+          },
+          "artifact_url": { "type": "string", "minLength": 1 },
+          "checksum": { "type": "string", "minLength": 1 },
+          "published_at": { "type": "string", "minLength": 1 },
+          "min_app_version": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "install": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["package_root", "requirements_path", "readme_path"],
+      "properties": {
+        "package_root": { "type": "string", "minLength": 1 },
+        "requirements_path": { "type": "string", "minLength": 1 },
+        "readme_path": { "type": "string", "minLength": 1 }
+      }
+    },
+    "maintainers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1, "maxLength": 100 },
+          "url": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}
