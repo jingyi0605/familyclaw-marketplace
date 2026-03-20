@@ -20,7 +20,8 @@
     {
       "version": "0.1.0",
       "git_ref": "main",
-      "artifact_type": "source_archive"
+      "artifact_type": "source_archive",
+      "min_app_version": "0.1.0"
     }
   ],
   "install": {

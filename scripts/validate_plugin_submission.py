@@ -231,6 +231,12 @@ def validate_submission(
 
         repo_description = normalize_text(str(repo_metadata.get("description") or ""))
         min_app_version = resolve_min_app_version(manifest)
+        if not min_app_version:
+            raise ValidationError(
+                "manifest.json 必须声明宿主最低版本。请在 compatibility.min_app_version（推荐）或 top-level min_app_version 中填写。",
+                error_code="manifest_invalid",
+                field="manifest_path",
+            )
         versions = build_versions(
             manifest_version=manifest_version,
             branch=branch,
@@ -298,6 +304,7 @@ def validate_submission(
                     f"插件 ID：`{plugin_id}`",
                     f"源码仓库：`{repo_info['html_url']}`",
                     f"默认安装版本：`{latest_version}`",
+                    f"最低宿主版本：`{min_app_version}`",
                     "当前可以进入机器人 PR 生成阶段。",
                 ],
                 field_errors=field_errors,

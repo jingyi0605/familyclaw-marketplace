@@ -374,6 +374,25 @@ def validate_generated_entry(entry: dict[str, Any]) -> list[dict[str, str]]:
     versions = entry.get("versions")
     if not isinstance(versions, list) or not versions:
         errors.append({"field": "versions", "error_code": "entry_generation_failed", "detail": "versions 至少要有一个版本。"})
+    if isinstance(versions, list):
+        for index, item in enumerate(versions):
+            if not isinstance(item, dict):
+                errors.append(
+                    {
+                        "field": f"versions[{index}]",
+                        "error_code": "entry_generation_failed",
+                        "detail": "versions 里的每一项都必须是对象。",
+                    }
+                )
+                continue
+            if not normalize_text(str(item.get("min_app_version") or "")):
+                errors.append(
+                    {
+                        "field": f"versions[{index}].min_app_version",
+                        "error_code": "entry_generation_failed",
+                        "detail": "每个市场版本都必须声明 min_app_version，不能生成兼容性未知的条目。",
+                    }
+                )
     latest_version = normalize_text(str(entry.get("latest_version") or ""))
     if isinstance(versions, list) and latest_version:
         version_set = {item.get("version") for item in versions if isinstance(item, dict)}
