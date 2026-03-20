@@ -69,6 +69,25 @@ body:
     validations:
       required: true
 
+  - type: markdown
+    attributes:
+      value: |
+        > 兼容性必填说明
+        >
+        > 如果这个插件要进入官方市场，插件仓库里的 `manifest.json` 必须声明宿主最低版本。
+        >
+        > 推荐写法：
+        >
+        > ```json
+        > {
+        >   "compatibility": {
+        >     "min_app_version": "0.1.0"
+        >   }
+        > }
+        > ```
+        >
+        > 机器人只认插件仓库里的 manifest 声明，不会用 Issue 文本替你补这个字段。
+
   - type: textarea
     id: summary_override
     attributes:
@@ -116,6 +135,8 @@ body:
         - label: 我确认插件源码仓库可以被公开访问。
           required: true
         - label: 我确认 manifest、README、requirements 已经准备好。
+          required: true
+        - label: 我确认 manifest 已声明 compatibility.min_app_version（或 top-level min_app_version）。
           required: true
         - label: 我确认权限和风险声明不是乱填的。
           required: true
