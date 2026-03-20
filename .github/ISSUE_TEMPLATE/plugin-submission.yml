@@ -97,6 +97,7 @@ body:
         > - `latest_version` 会自动指向当前最高版本
         > - 想保留多个正式版本，请先在插件仓库创建对应 tag，推荐格式 `v1.0.0`
         > - 正式多版本条目的 `git_ref` 会统一写成 `refs/tags/<tag>`
+        > - 每个 tag 对应版本自己的 `manifest.version` 和 `compatibility.min_app_version` 都要在打 tag 前先更新
         > - 如果仓库里没有 tag / release，机器人只会生成一个引用 branch 的单版本开发态条目
         >
         > 一句话：Issue 不是版本列表输入框，真正的多版本事实来源是你仓库里的 tag / release。

@@ -7,7 +7,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import PurePosixPath
-from typing import Any
+from typing import Any, Callable
 
 
 STATUS_PASSED = "passed"
@@ -348,6 +348,54 @@ def resolve_min_app_version(manifest: dict[str, Any]) -> str | None:
     return None
 
 
+def build_version_manifest_overrides(
+    *,
+    tag_names: list[str],
+    release_published_at_by_tag: dict[str, str | None] | None,
+    load_manifest_for_git_ref: Callable[[str], dict[str, Any]],
+) -> dict[str, dict[str, str]]:
+    overrides: dict[str, dict[str, str]] = {}
+    seen: set[str] = set()
+    published_at_map = release_published_at_by_tag or {}
+    for tag_name in tag_names:
+        normalized_tag_name = normalize_text(tag_name)
+        if not normalized_tag_name or normalized_tag_name in seen:
+            continue
+        seen.add(normalized_tag_name)
+        git_ref = normalize_tag_git_ref(normalized_tag_name)
+        manifest = load_manifest_for_git_ref(git_ref)
+        manifest_version = normalize_text(str(manifest.get("version") or ""))
+        expected_version = strip_version_prefix(normalized_tag_name)
+        if not manifest_version:
+            raise ValidationError(
+                f"tag {normalized_tag_name} 对应的 manifest.json 缺少 version。",
+                error_code="manifest_invalid",
+                field="manifest_path",
+            )
+        if manifest_version != expected_version:
+            raise ValidationError(
+                f"tag {normalized_tag_name} 和 manifest.version 不一致。发布前请先把 manifest.version 更新为 {expected_version}。",
+                error_code="manifest_invalid",
+                field="manifest_path",
+            )
+        min_app_version = resolve_min_app_version(manifest)
+        if not min_app_version:
+            raise ValidationError(
+                f"tag {normalized_tag_name} 对应的 manifest.json 必须声明 compatibility.min_app_version。每个版本都要单独维护最低宿主版本。",
+                error_code="manifest_invalid",
+                field="manifest_path",
+            )
+        item = {
+            "version": manifest_version,
+            "min_app_version": min_app_version,
+        }
+        published_at = normalize_text(published_at_map.get(normalized_tag_name))
+        if published_at:
+            item["published_at"] = published_at
+        overrides[git_ref] = item
+    return overrides
+
+
 def build_versions(
     *,
     manifest_version: str,
@@ -356,12 +404,14 @@ def build_versions(
     releases: list[dict[str, Any]],
     tags: list[dict[str, Any]],
     min_app_version: str | None,
+    version_manifest_overrides: dict[str, dict[str, str]] | None = None,
 ) -> list[dict[str, Any]]:
     versions: list[dict[str, Any]] = []
     seen: set[str] = set()
 
     def add_version(version: str, git_ref: str, *, published_at: str | None = None) -> None:
-        normalized_version = strip_version_prefix(version)
+        override = (version_manifest_overrides or {}).get(normalize_text(git_ref)) or {}
+        normalized_version = normalize_text(override.get("version")) or strip_version_prefix(version)
         if not normalized_version or normalized_version in seen:
             return
         seen.add(normalized_version)
@@ -371,10 +421,12 @@ def build_versions(
             "artifact_type": "source_archive",
             "artifact_url": build_source_archive_artifact_url(source_repo_url, git_ref),
         }
-        if published_at:
-            item["published_at"] = published_at
-        if min_app_version:
-            item["min_app_version"] = min_app_version
+        resolved_published_at = normalize_text(override.get("published_at")) or published_at
+        resolved_min_app_version = normalize_text(override.get("min_app_version")) or min_app_version
+        if resolved_published_at:
+            item["published_at"] = resolved_published_at
+        if resolved_min_app_version:
+            item["min_app_version"] = resolved_min_app_version
         versions.append(item)
 
     for release in releases:
