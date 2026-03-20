@@ -108,6 +108,7 @@ FamilyClaw 现在会按市场条目里的 `versions[].min_app_version` 判断插
 1. `latest_version` 必须能在 `versions[]` 里找到
 2. `latest_version` 必须指向当前最高版本，而不是随手挑一个
 3. 想保留旧版本回滚，就继续把旧版本留在 `versions[]` 里，不要拆文件
+4. 每个版本都必须带自己的 `min_app_version`，不能偷懒共用一份全局兼容说明
 
 ## tag / release 规则
 
@@ -120,6 +121,23 @@ FamilyClaw 现在会按市场条目里的 `versions[].min_app_version` 判断插
 5. 单版本 branch 兜底只是让开发阶段能跑，不是正式多版本发布方案
 
 一句话说：想让市场长期保存多个版本，仓库里就必须真的有这些版本对应的 tag。
+
+## 发版本前作者要先做什么
+
+如果你准备打一个新 tag，先把仓库里的事实改对，再来提市场 Issue：
+
+1. 更新 `manifest.version`
+2. 更新这个版本自己的 `compatibility.min_app_version`
+3. 如果依赖、配置、安装说明变了，同步更新 `requirements.txt` 和 README
+4. 确认 tag 名和 `manifest.version` 一致，再创建 tag / release
+
+机器人会按每个 tag 分别读取对应版本的 `manifest.json`。
+
+这意味着：
+
+- 历史版本的最低宿主版本会各自保存
+- 用户未来选安装 `v1.0.0` 还是 `v1.2.0`，看到的是各自真实兼容性
+- 如果 tag 和 `manifest.version` 对不上，收录流程会直接失败
 
 ## 重跑方式
 

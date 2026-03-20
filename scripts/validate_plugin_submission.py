@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+import subprocess
 from typing import Any
 
 from marketplace_submission_lib import (
@@ -15,6 +16,7 @@ from marketplace_submission_lib import (
     build_blob_file_url,
     build_raw_file_url,
     build_report_markdown,
+    build_version_manifest_overrides,
     build_versions,
     dump_json_file,
     fetch_repo_content_metadata,
@@ -32,6 +34,104 @@ from marketplace_submission_lib import (
     validate_required_submission_fields,
     write_github_output,
 )
+
+
+def _collect_version_tag_names(
+    *,
+    releases: list[dict[str, Any]],
+    tags: list[dict[str, Any]],
+) -> tuple[list[str], dict[str, str | None]]:
+    ordered_tag_names: list[str] = []
+    release_published_at_by_tag: dict[str, str | None] = {}
+    seen: set[str] = set()
+
+    def add_tag(tag_name: str | None, *, published_at: str | None = None) -> None:
+        normalized_tag_name = normalize_text(tag_name)
+        if not normalized_tag_name:
+            return
+        if published_at and normalized_tag_name not in release_published_at_by_tag:
+            release_published_at_by_tag[normalized_tag_name] = published_at
+        if normalized_tag_name in seen:
+            return
+        seen.add(normalized_tag_name)
+        ordered_tag_names.append(normalized_tag_name)
+
+    for release in releases:
+        if release.get("draft") or release.get("prerelease"):
+            continue
+        add_tag(
+            str(release.get("tag_name") or ""),
+            published_at=normalize_text(str(release.get("published_at") or release.get("created_at") or "")) or None,
+        )
+    for tag in tags:
+        add_tag(str(tag.get("name") or ""))
+    return ordered_tag_names, release_published_at_by_tag
+
+
+def _load_remote_manifest_for_git_ref(
+    *,
+    owner: str,
+    repo: str,
+    git_ref: str,
+    manifest_path: str,
+    token: str | None,
+) -> dict[str, Any]:
+    try:
+        return json.loads(
+            request_text(
+                build_raw_file_url(owner, repo, git_ref, manifest_path),
+                token=token,
+            )
+        )
+    except ValidationError as exc:
+        if exc.error_code == "plugin_repo_unreachable":
+            raise ValidationError(
+                f"找不到 {git_ref} 对应的 manifest.json。",
+                error_code="manifest_invalid",
+                field="manifest_path",
+            ) from exc
+        raise
+    except json.JSONDecodeError as exc:
+        raise ValidationError(
+            f"{git_ref} 对应的 manifest.json 不是合法 JSON。",
+            error_code="manifest_invalid",
+            field="manifest_path",
+        ) from exc
+
+
+def _load_local_manifest_for_git_ref(
+    *,
+    repo_dir: Path,
+    git_ref: str,
+    manifest_path: str,
+) -> dict[str, Any]:
+    normalized_ref = git_ref.removeprefix("refs/tags/")
+    try:
+        content = subprocess.check_output(
+            ["git", "-C", str(repo_dir), "show", f"{normalized_ref}:{manifest_path}"],
+            text=True,
+            encoding="utf-8",
+        )
+    except FileNotFoundError as exc:
+        raise ValidationError(
+            "本地调试环境找不到 git，无法读取 tag 对应的 manifest.json。",
+            error_code="automation_system_error",
+            field="manifest_path",
+        ) from exc
+    except subprocess.CalledProcessError as exc:
+        raise ValidationError(
+            f"找不到 {git_ref} 对应的 manifest.json。",
+            error_code="manifest_invalid",
+            field="manifest_path",
+        ) from exc
+    try:
+        return json.loads(content)
+    except json.JSONDecodeError as exc:
+        raise ValidationError(
+            f"{git_ref} 对应的 manifest.json 不是合法 JSON。",
+            error_code="manifest_invalid",
+            field="manifest_path",
+        ) from exc
 
 
 def parse_args() -> argparse.Namespace:
@@ -124,6 +224,7 @@ def validate_submission(
                 )
             releases: list[dict[str, Any]] = []
             tags: list[dict[str, Any]] = []
+            version_manifest_overrides: dict[str, dict[str, str]] = {}
         else:
             repo_metadata = fetch_repo_metadata(repo_info["owner"], repo_info["repo"], token=token)
             try:
@@ -203,6 +304,20 @@ def validate_submission(
                 )
             releases = fetch_repo_releases(repo_info["owner"], repo_info["repo"], token=token)
             tags = fetch_repo_tags(repo_info["owner"], repo_info["repo"], token=token)
+            version_tag_names, release_published_at_by_tag = _collect_version_tag_names(releases=releases, tags=tags)
+            version_manifest_overrides = {}
+            if version_tag_names:
+                version_manifest_overrides = build_version_manifest_overrides(
+                    tag_names=version_tag_names,
+                    release_published_at_by_tag=release_published_at_by_tag,
+                    load_manifest_for_git_ref=lambda git_ref: _load_remote_manifest_for_git_ref(
+                        owner=repo_info["owner"],
+                        repo=repo_info["repo"],
+                        git_ref=git_ref,
+                        manifest_path=manifest_path,
+                        token=token,
+                    ),
+                )
 
         plugin_id = normalize_text(str(manifest.get("id") or ""))
         manifest_name = normalize_text(str(manifest.get("name") or ""))
@@ -237,6 +352,18 @@ def validate_submission(
                 error_code="manifest_invalid",
                 field="manifest_path",
             )
+        if plugin_repo_dir:
+            version_tag_names, release_published_at_by_tag = _collect_version_tag_names(releases=releases, tags=tags)
+            if version_tag_names:
+                version_manifest_overrides = build_version_manifest_overrides(
+                    tag_names=version_tag_names,
+                    release_published_at_by_tag=release_published_at_by_tag,
+                    load_manifest_for_git_ref=lambda git_ref: _load_local_manifest_for_git_ref(
+                        repo_dir=base_dir,
+                        git_ref=git_ref,
+                        manifest_path=manifest_path,
+                    ),
+                )
         versions = build_versions(
             manifest_version=manifest_version,
             branch=branch,
@@ -244,8 +371,10 @@ def validate_submission(
             releases=releases,
             tags=tags,
             min_app_version=min_app_version,
+            version_manifest_overrides=version_manifest_overrides,
         )
         latest_version = versions[0]["version"]
+        latest_version_min_app_version = normalize_text(str(versions[0].get("min_app_version") or "")) or min_app_version
 
         generated_entry = {
             "plugin_id": plugin_id,
@@ -305,7 +434,7 @@ def validate_submission(
                     f"插件 ID：`{plugin_id}`",
                     f"源码仓库：`{repo_info['html_url']}`",
                     f"默认安装版本：`{latest_version}`",
-                    f"最低宿主版本：`{min_app_version}`",
+                    f"默认安装版本最低宿主版本：`{latest_version_min_app_version}`",
                     "当前可以进入机器人 PR 生成阶段。",
                 ],
                 field_errors=field_errors,
