@@ -23,7 +23,12 @@ concurrency:
 jobs:
   plugin-submission:
     if: >-
-      (github.event_name == 'issues' && contains(join(github.event.issue.labels.*.name, ','), 'plugin-submission'))
+      (github.event_name == 'issues'
+        && !github.event.issue.pull_request
+        && (
+          contains(join(github.event.issue.labels.*.name, ','), 'plugin-submission')
+          || contains(github.event.issue.body, '### 插件源码仓库地址')
+        ))
       || (github.event_name == 'issue_comment'
           && !github.event.issue.pull_request
           && contains(join(github.event.issue.labels.*.name, ','), 'plugin-submission')
@@ -89,6 +94,15 @@ jobs:
         with:
           script: |
             const issueNumber = context.issue.number;
+            const currentLabels = context.payload.issue.labels.map((label) => label.name);
+            if (!currentLabels.includes("plugin-submission")) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                labels: ["plugin-submission"],
+              }).catch(() => {});
+            }
             const statusLabels = [
               "status:submitted",
               "status:validating",
@@ -98,7 +112,6 @@ jobs:
               "status:approved",
               "status:rejected",
             ];
-            const currentLabels = context.payload.issue.labels.map((label) => label.name);
             const labelsToRemove = currentLabels.filter((label) => statusLabels.includes(label) && label !== "status:validating");
             for (const label of labelsToRemove) {
               await github.rest.issues.removeLabel({
