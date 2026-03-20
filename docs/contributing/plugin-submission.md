@@ -68,6 +68,59 @@ FamilyClaw 现在会按市场条目里的 `versions[].min_app_version` 判断插
 2. 机器人只会从 manifest 读取这个值，再写进市场条目
 3. manifest 没写，Issue 会校验失败，不会再生成一个“看起来能进市场、实际上不能安装”的条目
 
+## 多版本条目怎么保存
+
+官方市场不是“一个版本一个文件”，而是：
+
+- 市场根清单放在 `market.json`
+- 单个插件的真实条目固定放在 `plugins/<plugin_id>/entry.json`
+- 这个插件的所有可安装版本都放在同一个 `entry.json` 的 `versions[]` 里
+
+最小结构示例：
+
+```json
+{
+  "plugin_id": "demo-plugin",
+  "latest_version": "1.0.0",
+  "versions": [
+    {
+      "version": "1.0.0",
+      "git_ref": "refs/tags/v1.0.0",
+      "artifact_type": "source_archive",
+      "artifact_url": "https://github.com/demo/demo-plugin/archive/refs/tags/v1.0.0.zip",
+      "checksum": "sha256:...",
+      "published_at": "2026-03-20T12:00:00Z",
+      "min_app_version": "0.1.0"
+    },
+    {
+      "version": "0.9.0",
+      "git_ref": "refs/tags/v0.9.0",
+      "artifact_type": "source_archive",
+      "artifact_url": "https://github.com/demo/demo-plugin/archive/refs/tags/v0.9.0.zip",
+      "min_app_version": "0.1.0"
+    }
+  ]
+}
+```
+
+死规矩：
+
+1. `latest_version` 必须能在 `versions[]` 里找到
+2. `latest_version` 必须指向当前最高版本，而不是随手挑一个
+3. 想保留旧版本回滚，就继续把旧版本留在 `versions[]` 里，不要拆文件
+
+## tag / release 规则
+
+这里以前写得不够死，现在补清楚：
+
+1. 正式多版本条目必须来自 tag；`git_ref` 统一写成 `refs/tags/<tag>`
+2. 推荐同时发 GitHub Release，但正式规则先卡 tag，不强制你一定发 release asset
+3. 如果是 `release_asset`，`artifact_url` 必填；如果是 `source_archive`，可以显式写 `artifact_url`，也可以让宿主按 `git_ref` 推导
+4. 如果仓库里根本没有 tag / release，机器人只会退化生成一个“单版本开发态条目”，引用你在 Issue 里填的 branch
+5. 单版本 branch 兜底只是让开发阶段能跑，不是正式多版本发布方案
+
+一句话说：想让市场长期保存多个版本，仓库里就必须真的有这些版本对应的 tag。
+
 ## 重跑方式
 
 如果你补充了 Issue 内容，直接在 Issue 下评论：

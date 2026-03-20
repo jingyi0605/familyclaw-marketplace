@@ -240,6 +240,7 @@ def validate_submission(
         versions = build_versions(
             manifest_version=manifest_version,
             branch=branch,
+            source_repo_url=repo_info["html_url"],
             releases=releases,
             tags=tags,
             min_app_version=min_app_version,
