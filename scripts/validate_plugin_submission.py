@@ -18,6 +18,7 @@ from marketplace_submission_lib import (
     build_report_markdown,
     build_version_manifest_overrides,
     build_versions,
+    collect_version_tag_names,
     dump_json_file,
     fetch_repo_content_metadata,
     fetch_repo_metadata,
@@ -34,38 +35,6 @@ from marketplace_submission_lib import (
     validate_required_submission_fields,
     write_github_output,
 )
-
-
-def _collect_version_tag_names(
-    *,
-    releases: list[dict[str, Any]],
-    tags: list[dict[str, Any]],
-) -> tuple[list[str], dict[str, str | None]]:
-    ordered_tag_names: list[str] = []
-    release_published_at_by_tag: dict[str, str | None] = {}
-    seen: set[str] = set()
-
-    def add_tag(tag_name: str | None, *, published_at: str | None = None) -> None:
-        normalized_tag_name = normalize_text(tag_name)
-        if not normalized_tag_name:
-            return
-        if published_at and normalized_tag_name not in release_published_at_by_tag:
-            release_published_at_by_tag[normalized_tag_name] = published_at
-        if normalized_tag_name in seen:
-            return
-        seen.add(normalized_tag_name)
-        ordered_tag_names.append(normalized_tag_name)
-
-    for release in releases:
-        if release.get("draft") or release.get("prerelease"):
-            continue
-        add_tag(
-            str(release.get("tag_name") or ""),
-            published_at=normalize_text(str(release.get("published_at") or release.get("created_at") or "")) or None,
-        )
-    for tag in tags:
-        add_tag(str(tag.get("name") or ""))
-    return ordered_tag_names, release_published_at_by_tag
 
 
 def _load_remote_manifest_for_git_ref(
@@ -304,7 +273,7 @@ def validate_submission(
                 )
             releases = fetch_repo_releases(repo_info["owner"], repo_info["repo"], token=token)
             tags = fetch_repo_tags(repo_info["owner"], repo_info["repo"], token=token)
-            version_tag_names, release_published_at_by_tag = _collect_version_tag_names(releases=releases, tags=tags)
+            version_tag_names, release_published_at_by_tag = collect_version_tag_names(releases=releases, tags=tags)
             version_manifest_overrides = {}
             if version_tag_names:
                 version_manifest_overrides = build_version_manifest_overrides(
@@ -353,7 +322,7 @@ def validate_submission(
                 field="manifest_path",
             )
         if plugin_repo_dir:
-            version_tag_names, release_published_at_by_tag = _collect_version_tag_names(releases=releases, tags=tags)
+            version_tag_names, release_published_at_by_tag = collect_version_tag_names(releases=releases, tags=tags)
             if version_tag_names:
                 version_manifest_overrides = build_version_manifest_overrides(
                     tag_names=version_tag_names,
