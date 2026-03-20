@@ -46,17 +46,38 @@
       "type": "array",
       "items": { "type": "string", "minLength": 1 }
     },
-    "latest_version": { "type": "string", "minLength": 1 },
+    "latest_version": {
+      "type": "string",
+      "minLength": 1,
+      "description": "必须指向 versions 里当前最高的可分发版本。"
+    },
     "versions": {
       "type": "array",
       "minItems": 1,
+      "description": "同一插件的全部可分发版本都保存在这里。多版本正式条目统一使用 tag 引用；只有单版本开发态兜底时才允许 branch。",
       "items": {
         "type": "object",
         "additionalProperties": false,
         "required": ["version", "git_ref", "artifact_type", "min_app_version"],
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "artifact_type": { "const": "release_asset" }
+              }
+            },
+            "then": {
+              "required": ["artifact_url"]
+            }
+          }
+        ],
         "properties": {
           "version": { "type": "string", "minLength": 1 },
-          "git_ref": { "type": "string", "minLength": 1 },
+          "git_ref": {
+            "type": "string",
+            "minLength": 1,
+            "description": "正式多版本条目统一写 refs/tags/<tag>；只有单版本开发态兜底时才允许 branch。"
+          },
           "artifact_type": {
             "type": "string",
             "enum": ["release_asset", "source_archive"]

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from functools import cmp_to_key
 import re
 import urllib.error
 import urllib.parse
@@ -14,6 +15,21 @@ STATUS_FAILED = "failed"
 STATUS_SYSTEM_ERROR = "system_error"
 
 ALLOWED_RISK_LEVELS = {"low", "medium", "high"}
+_VERSION_PATTERN = re.compile(
+    r"^v?(?P<release>\d+(?:\.\d+)*)"
+    r"(?:(?:[-_.]?)(?P<pre_label>alpha|a|beta|b|rc|pre|preview)(?P<pre_number>\d*)?)?"
+    r"(?:\+.*)?$",
+    re.IGNORECASE,
+)
+_PRE_RELEASE_ORDER = {
+    "alpha": 0,
+    "a": 0,
+    "beta": 1,
+    "b": 1,
+    "pre": 2,
+    "preview": 2,
+    "rc": 2,
+}
 FORM_SECTION_FIELD_MAP = {
     "插件源码仓库地址": "plugin_repo_url",
     "仓库分支": "plugin_repo_branch",
@@ -269,6 +285,57 @@ def strip_version_prefix(value: str) -> str:
     return normalized
 
 
+def _parse_version_sort_key(value: str) -> tuple[tuple[int, ...], int, int]:
+    normalized = strip_version_prefix(value)
+    match = _VERSION_PATTERN.fullmatch(normalized)
+    if match is None:
+        raise ValueError(f"当前版本比较规则不支持 {value!r}")
+    release = tuple(int(part) for part in match.group("release").split("."))
+    pre_label = match.group("pre_label")
+    if pre_label is None:
+        return release, 99, 0
+    return release, _PRE_RELEASE_ORDER[pre_label.lower()], int(match.group("pre_number") or "0")
+
+
+def compare_version_text(left: str, right: str) -> int:
+    parsed_left = _parse_version_sort_key(left)
+    parsed_right = _parse_version_sort_key(right)
+    if parsed_left < parsed_right:
+        return -1
+    if parsed_left > parsed_right:
+        return 1
+    return 0
+
+
+def pick_highest_version(versions: list[str]) -> tuple[str | None, str | None]:
+    if not versions:
+        return None, None
+    highest = versions[0]
+    try:
+        for version in versions[1:]:
+            if compare_version_text(version, highest) > 0:
+                highest = version
+    except ValueError as exc:
+        return None, str(exc)
+    return highest, None
+
+
+def normalize_tag_git_ref(value: str) -> str:
+    normalized = normalize_text(value)
+    if normalized.startswith("refs/tags/"):
+        return normalized
+    return f"refs/tags/{normalized}"
+
+
+def is_tag_git_ref(value: str | None) -> bool:
+    normalized = normalize_text(value)
+    return normalized.startswith("refs/tags/") and len(normalized) > len("refs/tags/")
+
+
+def build_source_archive_artifact_url(source_repo_url: str, git_ref: str) -> str:
+    return f"{source_repo_url.rstrip('/')}/archive/{normalize_text(git_ref)}.zip"
+
+
 def resolve_min_app_version(manifest: dict[str, Any]) -> str | None:
     compatibility = manifest.get("compatibility")
     if isinstance(compatibility, dict):
@@ -285,6 +352,7 @@ def build_versions(
     *,
     manifest_version: str,
     branch: str,
+    source_repo_url: str,
     releases: list[dict[str, Any]],
     tags: list[dict[str, Any]],
     min_app_version: str | None,
@@ -301,6 +369,7 @@ def build_versions(
             "version": normalized_version,
             "git_ref": git_ref,
             "artifact_type": "source_archive",
+            "artifact_url": build_source_archive_artifact_url(source_repo_url, git_ref),
         }
         if published_at:
             item["published_at"] = published_at
@@ -316,7 +385,7 @@ def build_versions(
             continue
         add_version(
             strip_version_prefix(tag_name),
-            tag_name,
+            normalize_tag_git_ref(tag_name),
             published_at=normalize_text(str(release.get("published_at") or release.get("created_at") or "")) or None,
         )
 
@@ -325,16 +394,23 @@ def build_versions(
         for tag in tags:
             tag_name = normalize_text(str(tag.get("name") or ""))
             if tag_name == preferred:
-                add_version(manifest_version, tag_name)
+                add_version(manifest_version, normalize_tag_git_ref(tag_name))
 
     for tag in tags:
         tag_name = normalize_text(str(tag.get("name") or ""))
         if tag_name:
-            add_version(strip_version_prefix(tag_name), tag_name)
+            add_version(strip_version_prefix(tag_name), normalize_tag_git_ref(tag_name))
 
     if not versions:
         add_version(manifest_version, branch)
-    return versions
+    try:
+        return sorted(
+            versions,
+            key=cmp_to_key(lambda left, right: compare_version_text(str(left["version"]), str(right["version"]))),
+            reverse=True,
+        )
+    except ValueError:
+        return versions
 
 
 def validate_required_submission_fields(submission: dict[str, Any]) -> list[dict[str, str]]:
@@ -375,6 +451,7 @@ def validate_generated_entry(entry: dict[str, Any]) -> list[dict[str, str]]:
     if not isinstance(versions, list) or not versions:
         errors.append({"field": "versions", "error_code": "entry_generation_failed", "detail": "versions 至少要有一个版本。"})
     if isinstance(versions, list):
+        seen_versions: set[str] = set()
         for index, item in enumerate(versions):
             if not isinstance(item, dict):
                 errors.append(
@@ -385,6 +462,51 @@ def validate_generated_entry(entry: dict[str, Any]) -> list[dict[str, str]]:
                     }
                 )
                 continue
+            version_text = normalize_text(str(item.get("version") or ""))
+            if not version_text:
+                errors.append(
+                    {
+                        "field": f"versions[{index}].version",
+                        "error_code": "entry_generation_failed",
+                        "detail": "每个市场版本都必须声明 version。",
+                    }
+                )
+            elif version_text in seen_versions:
+                errors.append(
+                    {
+                        "field": f"versions[{index}].version",
+                        "error_code": "entry_generation_failed",
+                        "detail": f"版本 {version_text} 在 versions 里重复出现了。",
+                    }
+                )
+            else:
+                seen_versions.add(version_text)
+            git_ref = normalize_text(str(item.get("git_ref") or ""))
+            if not git_ref:
+                errors.append(
+                    {
+                        "field": f"versions[{index}].git_ref",
+                        "error_code": "entry_generation_failed",
+                        "detail": "每个市场版本都必须声明 git_ref。",
+                    }
+                )
+            elif len(versions) > 1 and not is_tag_git_ref(git_ref):
+                errors.append(
+                    {
+                        "field": f"versions[{index}].git_ref",
+                        "error_code": "entry_generation_failed",
+                        "detail": "多版本市场条目只能引用 tag，git_ref 必须写成 refs/tags/<tag>。",
+                    }
+                )
+            artifact_type = normalize_text(str(item.get("artifact_type") or ""))
+            if artifact_type == "release_asset" and not normalize_text(str(item.get("artifact_url") or "")):
+                errors.append(
+                    {
+                        "field": f"versions[{index}].artifact_url",
+                        "error_code": "entry_generation_failed",
+                        "detail": "release_asset 必须提供 artifact_url。",
+                    }
+                )
             if not normalize_text(str(item.get("min_app_version") or "")):
                 errors.append(
                     {
@@ -394,8 +516,10 @@ def validate_generated_entry(entry: dict[str, Any]) -> list[dict[str, str]]:
                     }
                 )
     latest_version = normalize_text(str(entry.get("latest_version") or ""))
+    if not latest_version:
+        errors.append({"field": "latest_version", "error_code": "entry_generation_failed", "detail": "latest_version 不能为空。"})
     if isinstance(versions, list) and latest_version:
-        version_set = {item.get("version") for item in versions if isinstance(item, dict)}
+        version_set = {normalize_text(str(item.get("version") or "")) for item in versions if isinstance(item, dict)}
         if latest_version not in version_set:
             errors.append(
                 {
@@ -404,6 +528,24 @@ def validate_generated_entry(entry: dict[str, Any]) -> list[dict[str, str]]:
                     "detail": "latest_version 必须能在 versions 里找到。",
                 }
             )
+        else:
+            highest_version, compare_error = pick_highest_version([version for version in version_set if version])
+            if compare_error is not None:
+                errors.append(
+                    {
+                        "field": "versions",
+                        "error_code": "entry_generation_failed",
+                        "detail": compare_error,
+                    }
+                )
+            elif highest_version is not None and latest_version != highest_version:
+                errors.append(
+                    {
+                        "field": "latest_version",
+                        "error_code": "entry_generation_failed",
+                        "detail": f"latest_version 必须指向当前最高版本 {highest_version}。",
+                    }
+                )
     install = entry.get("install")
     if not isinstance(install, dict):
         errors.append({"field": "install", "error_code": "entry_generation_failed", "detail": "install 必须存在。"})
