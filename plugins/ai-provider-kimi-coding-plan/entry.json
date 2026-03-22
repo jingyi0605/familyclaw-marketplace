@@ -1,0 +1,35 @@
+{
+  "plugin_id": "ai-provider-kimi-coding-plan",
+  "name": "Kimi Coding Plan",
+  "summary": "把家庭里的 AI Provider 接到 Kimi Coding Plan，让需要代码规划、快速推理和结构化文本回复的场景可以直接走 Kimi Coding Plan 的接口。",
+  "source_repo": "https://github.com/jingyi0605/familyclaw_ai_provider_kimi_coding_plan",
+  "manifest_path": "ai_provider_kimi_coding_plan/manifest.json",
+  "readme_url": "https://github.com/jingyi0605/familyclaw_ai_provider_kimi_coding_plan/blob/main/README.md",
+  "publisher": {
+    "name": "jingyi0605",
+    "url": "https://github.com/jingyi0605"
+  },
+  "categories": [],
+  "risk_level": "low",
+  "permissions": [],
+  "latest_version": "0.2.1",
+  "versions": [
+    {
+      "version": "0.2.1",
+      "git_ref": "refs/tags/v0.2.1",
+      "artifact_type": "source_archive",
+      "artifact_url": "https://github.com/jingyi0605/familyclaw_ai_provider_kimi_coding_plan/archive/refs/tags/v0.2.1.zip",
+      "min_app_version": "0.1.0"
+    }
+  ],
+  "install": {
+    "package_root": "ai_provider_kimi_coding_plan",
+    "requirements_path": "requirements.txt",
+    "readme_path": "README.md"
+  },
+  "maintainers": [
+    {
+      "name": "jingyi0605"
+    }
+  ]
+}
