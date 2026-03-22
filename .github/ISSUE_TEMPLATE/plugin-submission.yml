@@ -88,6 +88,20 @@ body:
         >
         > 机器人只认插件仓库里的 manifest 声明，不会用 Issue 文本替你补这个字段。
 
+  - type: markdown
+    attributes:
+      value: |
+        > 版本发布说明
+        >
+        > - 市场会把单个插件的所有版本都写进同一个 `plugins/<plugin_id>/entry.json` 的 `versions[]`
+        > - `latest_version` 会自动指向当前最高版本
+        > - 想保留多个正式版本，请先在插件仓库创建对应 tag，推荐格式 `v1.0.0`
+        > - 正式多版本条目的 `git_ref` 会统一写成 `refs/tags/<tag>`
+        > - 每个 tag 对应版本自己的 `manifest.version` 和 `compatibility.min_app_version` 都要在打 tag 前先更新
+        > - 如果仓库里没有 tag / release，机器人只会生成一个引用 branch 的单版本开发态条目
+        >
+        > 一句话：Issue 不是版本列表输入框，真正的多版本事实来源是你仓库里的 tag / release。
+
   - type: textarea
     id: summary_override
     attributes:
@@ -122,8 +136,8 @@ body:
     id: maintainer_notes
     attributes:
       label: 补充说明
-      description: 可选。只写对审核有帮助的信息，比如版本发布方式、外部依赖、已知限制。
-      placeholder: 当前只提供 source archive 安装方式。
+      description: 可选。只写对审核有帮助的信息，比如版本发布方式、tag / release 约定、外部依赖、已知限制。
+      placeholder: 当前通过 tag 发布正式版本，市场保留最近两个 source archive 版本。
     validations:
       required: false
 

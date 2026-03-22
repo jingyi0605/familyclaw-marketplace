@@ -68,6 +68,100 @@ FamilyClaw 现在会按市场条目里的 `versions[].min_app_version` 判断插
 2. 机器人只会从 manifest 读取这个值，再写进市场条目
 3. manifest 没写，Issue 会校验失败，不会再生成一个“看起来能进市场、实际上不能安装”的条目
 
+## 多版本条目怎么保存
+
+官方市场不是“一个版本一个文件”，而是：
+
+- 市场根清单放在 `market.json`
+- 单个插件的真实条目固定放在 `plugins/<plugin_id>/entry.json`
+- 这个插件的所有可安装版本都放在同一个 `entry.json` 的 `versions[]` 里
+
+最小结构示例：
+
+```json
+{
+  "plugin_id": "demo-plugin",
+  "latest_version": "1.0.0",
+  "versions": [
+    {
+      "version": "1.0.0",
+      "git_ref": "refs/tags/v1.0.0",
+      "artifact_type": "source_archive",
+      "artifact_url": "https://github.com/demo/demo-plugin/archive/refs/tags/v1.0.0.zip",
+      "checksum": "sha256:...",
+      "published_at": "2026-03-20T12:00:00Z",
+      "min_app_version": "0.1.0"
+    },
+    {
+      "version": "0.9.0",
+      "git_ref": "refs/tags/v0.9.0",
+      "artifact_type": "source_archive",
+      "artifact_url": "https://github.com/demo/demo-plugin/archive/refs/tags/v0.9.0.zip",
+      "min_app_version": "0.1.0"
+    }
+  ]
+}
+```
+
+死规矩：
+
+1. `latest_version` 必须能在 `versions[]` 里找到
+2. `latest_version` 必须指向当前最高版本，而不是随手挑一个
+3. 想保留旧版本回滚，就继续把旧版本留在 `versions[]` 里，不要拆文件
+4. 每个版本都必须带自己的 `min_app_version`，不能偷懒共用一份全局兼容说明
+
+## tag / release 规则
+
+这里以前写得不够死，现在补清楚：
+
+1. 正式多版本条目必须来自 tag；`git_ref` 统一写成 `refs/tags/<tag>`
+2. 推荐同时发 GitHub Release，但正式规则先卡 tag，不强制你一定发 release asset
+3. 如果是 `release_asset`，`artifact_url` 必填；如果是 `source_archive`，可以显式写 `artifact_url`，也可以让宿主按 `git_ref` 推导
+4. 如果仓库里根本没有 tag / release，机器人只会退化生成一个“单版本开发态条目”，引用你在 Issue 里填的 branch
+5. 单版本 branch 兜底只是让开发阶段能跑，不是正式多版本发布方案
+
+一句话说：想让市场长期保存多个版本，仓库里就必须真的有这些版本对应的 tag。
+
+## 已收录插件后续怎么同步新版本
+
+插件一旦已经进了市场，后面再发版本，不需要重新提一遍收录 Issue。
+
+现在官方市场仓库会每 2 小时自动做一次轻量扫描：
+
+1. 读取所有已收录条目的 `source_repo`
+2. 只检查这些仓库有没有新的 release / tag
+3. 只有发现新 tag 时，才去读取那个 tag 下的 `manifest.json`
+4. 自动补写 `versions[]`、更新 `latest_version`，并创建或更新机器人 PR
+
+这条定时任务故意保持保守：
+
+- 只追加新版本，或者把同版本的 branch 记录收口为 tag 记录
+- 一旦某个插件开始进入正式 tag 模式，旧的 branch 兜底记录会被移除
+- 不会因为上游删了 tag，就自动删掉市场里已经存在的历史版本
+- 如果新 tag 的 `manifest.version`、`compatibility.min_app_version` 不合法，这一轮会直接失败，不会生成脏 PR
+
+一句话说：
+
+- 第一次进市场：走收录 Issue
+- 已经进市场后的新版本：靠定时扫描自动发现，再走自动 PR + 人工审核
+
+## 发版本前作者要先做什么
+
+如果你准备打一个新 tag，先把仓库里的事实改对，再来提市场 Issue：
+
+1. 更新 `manifest.version`
+2. 更新这个版本自己的 `compatibility.min_app_version`
+3. 如果依赖、配置、安装说明变了，同步更新 `requirements.txt` 和 README
+4. 确认 tag 名和 `manifest.version` 一致，再创建 tag / release
+
+机器人会按每个 tag 分别读取对应版本的 `manifest.json`。
+
+这意味着：
+
+- 历史版本的最低宿主版本会各自保存
+- 用户未来选安装 `v1.0.0` 还是 `v1.2.0`，看到的是各自真实兼容性
+- 如果 tag 和 `manifest.version` 对不上，收录流程会直接失败
+
 ## 重跑方式
 
 如果你补充了 Issue 内容，直接在 Issue 下评论：
