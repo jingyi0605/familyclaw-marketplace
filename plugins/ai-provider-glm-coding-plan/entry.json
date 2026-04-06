@@ -1,0 +1,44 @@
+{
+  "plugin_id": "ai-provider-glm-coding-plan",
+  "name": "GLM Coding Plan",
+  "summary": "把 FamilyClaw 的 AI Provider 接到 GLM Coding Plan，适合代码规划、快速问答和结构化文本回复场景。",
+  "source_repo": "https://github.com/jingyi0605/familyclaw_ai_provider_glm_coding_plan",
+  "manifest_path": "ai_provider_glm_coding_plan/manifest.json",
+  "readme_url": "https://github.com/jingyi0605/familyclaw_ai_provider_glm_coding_plan/blob/main/README.md",
+  "publisher": {
+    "name": "jingyi0605",
+    "url": "https://github.com/jingyi0605"
+  },
+  "categories": [
+    "AI Provider"
+  ],
+  "risk_level": "low",
+  "permissions": [],
+  "latest_version": "0.2.2",
+  "versions": [
+    {
+      "version": "0.2.2",
+      "git_ref": "refs/tags/v0.2.2",
+      "artifact_type": "source_archive",
+      "artifact_url": "https://github.com/jingyi0605/familyclaw_ai_provider_glm_coding_plan/archive/refs/tags/v0.2.2.zip",
+      "min_app_version": "0.1.2"
+    },
+    {
+      "version": "0.2.1",
+      "git_ref": "refs/tags/v0.2.1",
+      "artifact_type": "source_archive",
+      "artifact_url": "https://github.com/jingyi0605/familyclaw_ai_provider_glm_coding_plan/archive/refs/tags/v0.2.1.zip",
+      "min_app_version": "0.1.0"
+    }
+  ],
+  "install": {
+    "package_root": "ai_provider_glm_coding_plan",
+    "requirements_path": "requirements.txt",
+    "readme_path": "README.md"
+  },
+  "maintainers": [
+    {
+      "name": "jingyi0605"
+    }
+  ]
+}
