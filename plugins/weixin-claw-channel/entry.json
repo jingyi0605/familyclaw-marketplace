@@ -1,0 +1,47 @@
+{
+  "plugin_id": "weixin-claw-channel",
+  "name": "微信 Claw 通道插件",
+  "summary": "把 FamilyClaw 接到微信 Claw 通道，支持扫码登录、消息轮询、文本回复和基础附件发送。",
+  "source_repo": "https://github.com/jingyi0605/familyclaw_weixin_claw_channel",
+  "manifest_path": "manifest.json",
+  "readme_url": "https://github.com/jingyi0605/familyclaw_weixin_claw_channel/blob/main/README.md",
+  "publisher": {
+    "name": "jingyi0605",
+    "url": "https://github.com/jingyi0605"
+  },
+  "categories": [
+    "通道"
+  ],
+  "risk_level": "medium",
+  "permissions": [
+    "channel.receive",
+    "channel.send"
+  ],
+  "latest_version": "0.1.1",
+  "versions": [
+    {
+      "version": "0.1.1",
+      "git_ref": "refs/tags/v0.1.1",
+      "artifact_type": "source_archive",
+      "artifact_url": "https://github.com/jingyi0605/familyclaw_weixin_claw_channel/archive/refs/tags/v0.1.1.zip",
+      "min_app_version": "0.1.2"
+    },
+    {
+      "version": "0.1.0",
+      "git_ref": "refs/tags/v0.1.0",
+      "artifact_type": "source_archive",
+      "artifact_url": "https://github.com/jingyi0605/familyclaw_weixin_claw_channel/archive/refs/tags/v0.1.0.zip",
+      "min_app_version": "0.1.0"
+    }
+  ],
+  "install": {
+    "package_root": "plugin",
+    "requirements_path": "requirements.txt",
+    "readme_path": "README.md"
+  },
+  "maintainers": [
+    {
+      "name": "jingyi0605"
+    }
+  ]
+}
