@@ -1,0 +1,47 @@
+{
+  "plugin_id": "migpt-xiaoai-speaker",
+  "name": "MiGPT 小爱音箱插件",
+  "summary": "把 FamilyClaw 的语音交互和设备绑定能力接到小爱音箱链路里，支持账号预检、设备发现和运行状态管理。",
+  "source_repo": "https://github.com/jingyi0605/familyclaw_migpt_xiaoai_speaker",
+  "manifest_path": "manifest.json",
+  "readme_url": "https://github.com/jingyi0605/familyclaw_migpt_xiaoai_speaker/blob/main/README.md",
+  "publisher": {
+    "name": "jingyi0605",
+    "url": "https://github.com/jingyi0605"
+  },
+  "categories": [
+    "语音交互"
+  ],
+  "risk_level": "medium",
+  "permissions": [
+    "device.read",
+    "device.control"
+  ],
+  "latest_version": "0.1.1",
+  "versions": [
+    {
+      "version": "0.1.1",
+      "git_ref": "refs/tags/v0.1.1",
+      "artifact_type": "source_archive",
+      "artifact_url": "https://github.com/jingyi0605/familyclaw_migpt_xiaoai_speaker/archive/refs/tags/v0.1.1.zip",
+      "min_app_version": "0.1.2"
+    },
+    {
+      "version": "0.1.0",
+      "git_ref": "refs/tags/v0.1.0",
+      "artifact_type": "source_archive",
+      "artifact_url": "https://github.com/jingyi0605/familyclaw_migpt_xiaoai_speaker/archive/refs/tags/v0.1.0.zip",
+      "min_app_version": "0.1.0"
+    }
+  ],
+  "install": {
+    "package_root": ".",
+    "requirements_path": "requirements.txt",
+    "readme_path": "README.md"
+  },
+  "maintainers": [
+    {
+      "name": "jingyi0605"
+    }
+  ]
+}
