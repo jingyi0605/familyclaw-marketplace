@@ -17,8 +17,15 @@
     "channel.receive",
     "channel.send"
   ],
-  "latest_version": "0.1.1",
+  "latest_version": "0.1.2",
   "versions": [
+    {
+      "version": "0.1.2",
+      "git_ref": "refs/tags/v0.1.2",
+      "artifact_type": "source_archive",
+      "artifact_url": "https://github.com/jingyi0605/familyclaw_weixin_claw_channel/archive/refs/tags/v0.1.2.zip",
+      "min_app_version": "0.1.2"
+    },
     {
       "version": "0.1.1",
       "git_ref": "refs/tags/v0.1.1",
